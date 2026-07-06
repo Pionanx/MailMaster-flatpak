@@ -120,6 +120,7 @@ jobs:
             echo "Private key fingerprint $secret_fpr does not match repository public key $public_fpr" >&2
             exit 1
           fi
+          echo "Using Flatpak GPG key: $secret_fpr"
           echo "FLATPAK_GPG_PUBLIC_KEY=$RUNNER_TEMP/flatpak-public.gpg" >> "$GITHUB_ENV"
           echo "FLATPAK_GPG_KEY_ID=$secret_fpr" >> "$GITHUB_ENV"
 
