@@ -15,6 +15,7 @@ finish-args:
   - --filesystem=xdg-desktop:create
   - --filesystem=xdg-pictures:create
   - --filesystem=xdg-videos:create
+  - --persist=.mailmaster
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.freedesktop.secrets
