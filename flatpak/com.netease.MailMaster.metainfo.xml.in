@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.netease.MailMaster</id>
+  <name>NetEase Mail Master</name>
+  <name xml:lang="zh-CN">网易邮箱大师</name>
+  <summary>Desktop email client by NetEase</summary>
+  <summary xml:lang="zh-CN">网易官方桌面邮箱客户端</summary>
+  <developer id="com.netease">
+    <name>NetEase</name>
+    <name xml:lang="zh-CN">网易</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <url type="homepage">https://dashi.163.com/index.html</url>
+  <launchable type="desktop-id">com.netease.MailMaster.desktop</launchable>
+  <provides>
+    <binary>mailmaster</binary>
+  </provides>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <description>
+    <p>NetEase Mail Master is an email client for personal and enterprise mail accounts. This Flatpak bundles the official Linux Debian package from the NetEase Mail Master download site.</p>
+    <p xml:lang="zh-CN">网易邮箱大师是面向个人和企业邮箱账号的邮件客户端。本 Flatpak 封装网易邮箱大师官方下载站提供的 Linux Debian 包。</p>
+  </description>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="@VERSION@" date="@RELEASE_DATE@">
+      <description>
+        <p>Official Linux package @VERSION@.</p>
+      </description>
+    </release>
+  </releases>
+</component>

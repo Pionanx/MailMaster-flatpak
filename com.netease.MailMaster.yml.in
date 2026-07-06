@@ -1,0 +1,120 @@
+app-id: com.netease.MailMaster
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: mailmaster
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-documents:create
+  - --filesystem=xdg-download:create
+  - --filesystem=xdg-desktop:create
+  - --filesystem=xdg-pictures:create
+  - --filesystem=xdg-videos:create
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.*
+  - --own-name=com.canonical.AppMenu.Registrar
+  - --own-name=com.netease.MailMaster.*
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --env=QT_XCB_GL_INTEGRATION=none
+
+cleanup:
+  - /include
+  - /lib/debug
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: ubuntu-compat-libs
+    buildsystem: simple
+    build-commands:
+      - |
+        for pkg in *.deb; do
+          dir="extract-${pkg%.deb}"
+          mkdir -p "$dir"
+          (cd "$dir" && ar x "../$pkg" && tar -xf data.tar.*)
+        done
+      - install -d /app/lib /app/lib/sasl2 /app/etc /app/share
+      - |
+        for root in extract-*; do
+          if [ -d "$root/usr/lib/x86_64-linux-gnu" ]; then
+            cp -a "$root/usr/lib/x86_64-linux-gnu"/lib*.so* /app/lib/ 2>/dev/null || true
+          fi
+          if [ -d "$root/usr/lib/x86_64-linux-gnu/sasl2" ]; then
+            cp -a "$root/usr/lib/x86_64-linux-gnu/sasl2"/* /app/lib/sasl2/
+          fi
+          if [ -d "$root/etc/gconf" ]; then
+            cp -a "$root/etc/gconf" /app/etc/
+          fi
+          if [ -d "$root/usr/share/GConf" ]; then
+            cp -a "$root/usr/share/GConf" /app/share/
+          fi
+        done
+    sources:
+      - type: file
+        url: https://archive.ubuntu.com/ubuntu/pool/main/d/dbus-glib/libdbus-glib-1-2_0.112-2build1_amd64.deb
+        sha256: eac07c361f81d846d877c606a98736137ecd04a36c33fdf53baa45693cea3f95
+        dest-filename: libdbus-glib-1-2.deb
+      - type: file
+        url: https://archive.ubuntu.com/ubuntu/pool/universe/g/gconf/libgconf-2-4_3.2.6-7ubuntu2_amd64.deb
+        sha256: ad86a4ee82b2631dab97d16736580f03108524a8040a790a6ef8b20cbd358be4
+        dest-filename: libgconf-2-4.deb
+      - type: file
+        url: https://archive.ubuntu.com/ubuntu/pool/universe/g/gconf/gconf2-common_3.2.6-7ubuntu2_all.deb
+        sha256: 627d708d8f282821f3ec7d9f08060cc5b7cc3a737b1e30e91da710c915a71482
+        dest-filename: gconf2-common.deb
+      - type: file
+        url: https://archive.ubuntu.com/ubuntu/pool/universe/n/nss-wrapper/libnss-wrapper_1.1.11-1ubuntu2_amd64.deb
+        sha256: 6d023d6bc110c4d08efca9ba51196d2b92e61c1824caf47e28e073df681b1253
+        dest-filename: libnss-wrapper.deb
+      - type: file
+        url: https://archive.ubuntu.com/ubuntu/pool/main/c/cyrus-sasl2/libsasl2-2_2.1.27+dfsg2-3ubuntu1_amd64.deb
+        sha256: e68ac6059677e0356e492e0e6a6c31344a4815f03e7cf367fe35fe1e7ebc128c
+        dest-filename: libsasl2-2.deb
+      - type: file
+        url: https://archive.ubuntu.com/ubuntu/pool/main/c/cyrus-sasl2/libsasl2-modules-db_2.1.27+dfsg2-3ubuntu1_amd64.deb
+        sha256: f6fbbba615f27b10bb12e65188e5b5160e03893ef580366e53a53dbdeedf4d17
+        dest-filename: libsasl2-modules-db.deb
+      - type: file
+        url: https://archive.ubuntu.com/ubuntu/pool/main/d/db5.3/libdb5.3_5.3.28+dfsg1-0.8ubuntu3_amd64.deb
+        sha256: ce60e446c9cb0e94bb4b4d0fe4f969e772edec250deb186bacf955e4d196548b
+        dest-filename: libdb5.3.deb
+
+  - name: mailmaster
+    buildsystem: simple
+    build-commands:
+      - ar x mail.deb
+      - tar -xf data.tar.*
+      - install -d /app/bin /app/mailmaster /app/share/applications /app/share/metainfo /app/share/icons/hicolor/128x128/apps /app/share/icons/hicolor/256x256/apps
+      - cp -a opt/mailmaster/. /app/mailmaster/
+      - chmod 0755 /app/mailmaster/mailmaster /app/mailmaster/chrome-sandbox
+      - install -Dm755 mailmaster-wrapper /app/bin/mailmaster
+      - install -Dm644 com.netease.MailMaster.desktop /app/share/applications/com.netease.MailMaster.desktop
+      - install -Dm644 com.netease.MailMaster.metainfo.xml /app/share/metainfo/com.netease.MailMaster.metainfo.xml
+      - install -Dm644 logo-128.png /app/share/icons/hicolor/128x128/apps/com.netease.MailMaster.png
+      - install -Dm644 logo-256.png /app/share/icons/hicolor/256x256/apps/com.netease.MailMaster.png
+    sources:
+      - type: file
+        path: @MAILMASTER_DEB_PATH@
+        dest-filename: mail.deb
+      - type: file
+        path: flatpak/mailmaster-wrapper
+      - type: file
+        path: flatpak/com.netease.MailMaster.desktop
+      - type: file
+        path: build/generated/com.netease.MailMaster.metainfo.xml
+      - type: file
+        path: assets/logo-128.png
+      - type: file
+        path: assets/logo-256.png

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=网易邮箱大师
+Name[en_US]=NetEase Mail Master
+GenericName=Email Client
+GenericName[zh_CN]=邮箱客户端
+Comment=NetEase Mail Master desktop email client
+Comment[zh_CN]=网易邮箱大师桌面邮箱客户端
+Exec=mailmaster %U
+Icon=com.netease.MailMaster
+Terminal=false
+Categories=Network;Email;
+Keywords=mail;email;网易邮箱大师;邮箱;邮件;
+MimeType=x-scheme-handler/mailto;
+StartupNotify=true
+

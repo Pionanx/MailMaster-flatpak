@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export LD_LIBRARY_PATH="/app/mailmaster/lib:/app/mailmaster:/app/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="/app/mailmaster/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="/app/mailmaster/plugins/platforms"
+export QT_XCB_GL_INTEGRATION=none
+export SASL_PATH="/app/lib/sasl2"
+export GCONF_CONFIG_SOURCE="xml:readonly:/app/etc/gconf/gconf.xml.defaults"
+
+cd /app/mailmaster
+exec ./mailmaster --no-sandbox "$@"

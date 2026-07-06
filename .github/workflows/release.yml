@@ -1,0 +1,183 @@
+name: Build Flatpak Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if this Flatpak release already exists
+        required: true
+        type: boolean
+        default: true
+  schedule:
+    - cron: '11 */6 * * *'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: mailmaster-flatpak-release
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      asset_name: ${{ steps.resolve.outputs.asset_name }}
+      asset_url: ${{ steps.resolve.outputs.asset_url }}
+      asset_sha256: ${{ steps.resolve.outputs.asset_sha256 }}
+      should_build: ${{ steps.resolve.outputs.should_build }}
+      reason: ${{ steps.resolve.outputs.reason }}
+
+    steps:
+      - name: Check out packaging repo
+        uses: actions/checkout@v7
+
+      - name: Resolve official Linux package
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FORCE_BUILD: ${{ github.event.inputs.force || 'false' }}
+        run: |
+          python3 scripts/check-upstream-release.py \
+            --packaging-repo "${{ github.repository }}" \
+            --force "$FORCE_BUILD"
+
+      - name: Write summary
+        run: |
+          {
+            echo "### NetEase Mail Master upstream check"
+            echo ""
+            echo "- Official package version: \`${{ steps.resolve.outputs.version }}\`"
+            echo "- Asset: \`${{ steps.resolve.outputs.asset_name }}\`"
+            echo "- Packaging release: \`${{ steps.resolve.outputs.release_tag }}\`"
+            echo "- Should build: \`${{ steps.resolve.outputs.should_build }}\`"
+            echo "- Reason: ${{ steps.resolve.outputs.reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Check out packaging repo
+        uses: actions/checkout@v7
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder appstream desktop-file-utils
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: Prepare Flatpak signing key
+        env:
+          FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+          FLATPAK_GPG_PUBLIC_KEY_SECRET: ${{ secrets.FLATPAK_GPG_PUBLIC_KEY }}
+          FLATPAK_GPG_KEY_ID_VAR: ${{ vars.FLATPAK_GPG_KEY_ID }}
+          FLATPAK_GPG_KEY_ID_SECRET: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+        run: |
+          set -euo pipefail
+          FLATPAK_GPG_KEY_ID="${FLATPAK_GPG_KEY_ID_VAR:-$FLATPAK_GPG_KEY_ID_SECRET}"
+          echo "FLATPAK_GPG_HOMEDIR=$RUNNER_TEMP/gnupg" >> "$GITHUB_ENV"
+          if [[ -z "$FLATPAK_GPG_PRIVATE_KEY" || -z "$FLATPAK_GPG_PUBLIC_KEY_SECRET" ]]; then
+            echo "FLATPAK_GPG_PRIVATE_KEY and FLATPAK_GPG_PUBLIC_KEY secrets are required." >&2
+            exit 1
+          fi
+          install -d -m 700 "$RUNNER_TEMP/gnupg"
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          printf '%s' "$FLATPAK_GPG_PUBLIC_KEY_SECRET" > "$RUNNER_TEMP/flatpak-public.gpg"
+          printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
+          public_fpr="$(gpg --show-keys --with-colons "$RUNNER_TEMP/flatpak-public.gpg" 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+          if [[ -z "$public_fpr" ]]; then
+            echo "Invalid FLATPAK_GPG_PUBLIC_KEY secret" >&2
+            exit 1
+          fi
+          if [[ -z "$FLATPAK_GPG_KEY_ID" ]]; then
+            FLATPAK_GPG_KEY_ID="$public_fpr"
+          fi
+          secret_fpr="$(gpg --batch --with-colons --list-secret-keys "$FLATPAK_GPG_KEY_ID" 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }' || true)"
+          if [[ -z "$secret_fpr" ]]; then
+            echo "Imported private key does not contain $FLATPAK_GPG_KEY_ID" >&2
+            exit 1
+          fi
+          if [[ "$secret_fpr" != "$public_fpr" ]]; then
+            echo "Private key fingerprint $secret_fpr does not match repository public key $public_fpr" >&2
+            exit 1
+          fi
+          echo "FLATPAK_GPG_PUBLIC_KEY=$RUNNER_TEMP/flatpak-public.gpg" >> "$GITHUB_ENV"
+          echo "FLATPAK_GPG_KEY_ID=$secret_fpr" >> "$GITHUB_ENV"
+
+      - name: Build bundle
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FLATPAK_BASE_URL: ${{ steps.pages.outputs.base_url }}
+          FLATPAK_REPO_URL: ${{ steps.pages.outputs.base_url }}/repo
+        run: |
+          if [[ -n "${FLATPAK_GPG_PUBLIC_KEY:-}" && ! -s "$FLATPAK_GPG_PUBLIC_KEY" ]]; then
+            unset FLATPAK_GPG_KEY_ID FLATPAK_GPG_PUBLIC_KEY
+          fi
+          ./scripts/build-flatpak.sh
+
+      - name: Read release metadata
+        id: meta
+        run: |
+          . build/generated/release.env
+          echo "bundle=$BUNDLE_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$MAILMASTER_VERSION" >> "$GITHUB_OUTPUT"
+          echo "asset=$MAILMASTER_ASSET_NAME" >> "$GITHUB_OUTPUT"
+          echo "url=$MAILMASTER_ASSET_URL" >> "$GITHUB_OUTPUT"
+          echo "sha256=$MAILMASTER_ASSET_SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.meta.outputs.bundle }}
+          path: |
+            dist/${{ steps.meta.outputs.bundle }}
+            dist/${{ steps.meta.outputs.bundle }}.sha256
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist/pages
+
+      - name: Deploy Flatpak repository to Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.resolve.outputs.release_tag }}
+          name: NetEase Mail Master ${{ steps.meta.outputs.version }} Flatpak
+          target_commitish: ${{ github.sha }}
+          overwrite_files: true
+          files: |
+            dist/${{ steps.meta.outputs.bundle }}
+            dist/${{ steps.meta.outputs.bundle }}.sha256
+          body: |
+            Flatpak bundle built from the official NetEase Mail Master Linux package `${{ steps.meta.outputs.version }}`.
+
+            Flatpak repository: ${{ steps.pages.outputs.base_url }}/mailmaster.flatpakrepo
+            Direct install ref: ${{ steps.pages.outputs.base_url }}/com.netease.MailMaster.flatpakref
+
+            Upstream download page: https://dashi.163.com/index.html
+            Official Linux asset: `${{ steps.meta.outputs.asset }}`
+            Official asset URL: ${{ steps.meta.outputs.url }}
+            Official asset SHA256: `${{ steps.meta.outputs.sha256 }}`
